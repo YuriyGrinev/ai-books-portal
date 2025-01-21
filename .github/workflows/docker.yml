@@ -1,0 +1,72 @@
+name: Docker
+
+on:
+  push:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Log in to the Container registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha
+        labels: |
+          org.opencontainers.image.title=Books Portal
+          org.opencontainers.image.description=Портал для управления электронными книгами
+          org.opencontainers.image.source=${{ github.event.repository.html_url }}
+          org.opencontainers.image.version=${{ github.ref_name }}
+          org.opencontainers.image.created=${{ steps.meta.outputs.created }}
+          org.opencontainers.image.revision=${{ github.sha }}
+        
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+        
+    - name: Update Docker Hub description
+      if: github.event_name == 'release'
+      uses: peter-evans/dockerhub-description@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        repository: ${{ env.IMAGE_NAME }}
+        short-description: "Портал для управления электронными книгами"
+        readme-filepath: ./README.md 

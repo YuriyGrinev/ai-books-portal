@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Get version from tag
+      id: tag_name
+      run: |
+        echo "current_version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        echo "previous_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo '')" >> $GITHUB_OUTPUT
+    
+    - name: Generate changelog
+      id: changelog
+      run: |
+        changelog=""
+        if [ -n "${{ steps.tag_name.outputs.previous_tag }}" ]; then
+          changelog=$(git log --pretty=format:"* %s (%h)" ${{ steps.tag_name.outputs.previous_tag }}..HEAD)
+        else
+          changelog=$(git log --pretty=format:"* %s (%h)" HEAD)
+        fi
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo "$changelog" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+    
+    - name: Build changelog
+      id: build_changelog
+      uses: mikepenz/release-changelog-builder-action@v4
+      with:
+        configuration: |
+          {
+            "categories": [
+              {
+                "title": "## 🚀 Новые функции",
+                "labels": ["feature", "enhancement"]
+              },
+              {
+                "title": "## 🐛 Исправления",
+                "labels": ["fix", "bug"]
+              },
+              {
+                "title": "## 📦 Зависимости",
+                "labels": ["dependencies"]
+              },
+              {
+                "title": "## 📚 Документация",
+                "labels": ["documentation"]
+              }
+            ]
+          }
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Release ${{ steps.tag_name.outputs.current_version }}
+        body: |
+          ## Что нового в версии ${{ steps.tag_name.outputs.current_version }}
+          
+          ${{ steps.build_changelog.outputs.changelog }}
+          
+          ## Полный список изменений
+          
+          ${{ steps.changelog.outputs.changelog }}
+        draft: false
+        prerelease: false
+        token: ${{ secrets.GITHUB_TOKEN }}
+        files: |
+          LICENSE
+          README.md
+    
+    - name: Notify on Telegram
+      if: success()
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.TELEGRAM_CHAT_ID }}
+        token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        format: markdown
+        message: |
+          🚀 *Новый релиз ${{ steps.tag_name.outputs.current_version }}*
+          
+          Основные изменения:
+          ${{ steps.build_changelog.outputs.changelog }} 

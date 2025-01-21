@@ -1,0 +1,114 @@
+groups:
+  - name: books-portal
+    rules:
+      # Доступность сервиса
+      - alert: ServiceDown
+        expr: up{job="books-portal"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Сервис недоступен"
+          description: "Сервис {{ $labels.instance }} недоступен более 1 минуты"
+
+      # Высокая латентность HTTP запросов
+      - alert: HighRequestLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="books-portal"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая латентность запросов"
+          description: "95-й перцентиль времени ответа превышает 1 секунду для {{ $labels.endpoint }}"
+
+      # Высокий процент ошибок
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{job="books-portal",status=~"5.."}[5m]) / rate(http_requests_total{job="books-portal"}[5m]) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокий процент ошибок"
+          description: "Процент ошибок превышает 5% для {{ $labels.endpoint }}"
+
+      # Проблемы с базой данных
+      - alert: DatabaseConnectionsExhausted
+        expr: db_connections_in_use / db_connection_pool_size * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Исчерпание пула соединений БД"
+          description: "Использовано более 90% соединений с базой данных"
+
+      # Проблемы с кэшем
+      - alert: HighCacheMissRate
+        expr: rate(cache_misses_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) * 100 > 50
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокий процент промахов кэша"
+          description: "Процент промахов кэша превышает 50% для операции {{ $labels.operation }}"
+
+      # Проблемы с поиском
+      - alert: ElasticsearchErrors
+        expr: rate(search_requests_total{status="error"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ошибки поиска"
+          description: "Обнаружены ошибки в поисковых запросах для индекса {{ $labels.index }}"
+
+      # Проблемы с хранилищем
+      - alert: StorageErrors
+        expr: rate(storage_operations_total{status="error"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ошибки файлового хранилища"
+          description: "Обнаружены ошибки в операциях с файловым хранилищем"
+
+      # Проблемы с уведомлениями
+      - alert: NotificationErrors
+        expr: rate(notification_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ошибки отправки уведомлений"
+          description: "Обнаружены ошибки при отправке уведомлений типа {{ $labels.type }}"
+
+  - name: system
+    rules:
+      # Высокая загрузка CPU
+      - alert: HighCPULoad
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая загрузка CPU"
+          description: "Загрузка CPU на {{ $labels.instance }} превышает 80%"
+
+      # Мало свободной памяти
+      - alert: LowMemory
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Мало свободной памяти"
+          description: "Свободной памяти менее 10% на {{ $labels.instance }}"
+
+      # Мало места на диске
+      - alert: LowDiskSpace
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Мало места на диске"
+          description: "Свободного места на диске менее 10% на {{ $labels.instance }}" 
